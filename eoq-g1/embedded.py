@@ -16,7 +16,7 @@ def build_document() -> str:
     )
     if count != 1:
         raise ValueError("La plantilla debe incluir exactamente una hoja style.css.")
-    for filename in ("model.js", "app.js"):
+    for filename in ("model.js", "app.js", "presentation.js"):
         script = (ASSETS / filename).read_text(encoding="utf-8")
         script = re.sub(r"</script", r"<\\/script", script, flags=re.IGNORECASE)
         document, count = re.subn(

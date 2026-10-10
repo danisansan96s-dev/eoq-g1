@@ -26,3 +26,16 @@ La carpeta final de publicación se inició y probó nuevamente: 54 comprobacion
 ## Límites de esta entrega
 
 El despliegue remoto en Streamlit Community Cloud no se ejecutó: se entrega una carpeta lista para un nuevo repositorio GitHub. Las pruebas de impresión comprueban el botón y su invocación; no automatizan el diálogo de impresión del sistema. Los escenarios permanecen en el navegador hasta recargar. Los documentos Word y Excel EOQ no fueron adjuntados.
+
+## Modo exposición
+
+- Seis pantallas vinculadas al mismo escenario y modelo del análisis completo. No se duplicaron fórmulas EOQ ni se fijaron resultados.
+- **134 comprobaciones en Streamlit + Chromium** y **134 en HTML local + Chromium**, sin errores JavaScript.
+- Navegación Anterior/Siguiente, seis accesos numerados y flechas de teclado; las flechas no cambian de pantalla al editar demanda.
+- Demanda se aplica explícitamente; se verificaron cambios a 12.000, 15.000 y 21.000, actualización de EOQ, indicadores, curvas, posiciones, umbrales y conclusiones, y conservación de la pantalla activa.
+- Se verificaron las tres variaciones independientes, restauración de G1 y actualización al modificar parámetros desde Análisis completo.
+- Pantalla completa real: entrada, navegación y salida.
+- Las seis pantallas caben sin desplazamiento ni solapamientos en portátiles 1280×720, 1366×768 y 1440×900, tanto en Streamlit como en HTML local. Capturas revisadas.
+- Adaptación móvil de 390×844 sin desbordamiento horizontal de la página: bloques apilados y tablas/gráficas anchas con desplazamiento propio.
+- El análisis completo conserva sus **54 comprobaciones de navegador**, incluidas descargas, además de **41 controles del modelo** y **2 pruebas Python de empaquetado y arranque**.
+- El componente Streamlit incorpora el nuevo recurso presentation.js y permite formularios y pantalla completa. No se añadieron dependencias de servidor.

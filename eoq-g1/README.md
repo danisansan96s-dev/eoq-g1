@@ -54,6 +54,25 @@ La integración usa un componente v2 de Streamlit con un iframe de altura adapta
 
 Los escenarios no se envían al servidor ni persisten tras recargar. Descargue el JSON antes de cerrar si necesita conservar el resultado. El botón de descarga incluye los parámetros y cálculos del escenario activo. Para un informe PDF use **Imprimir informe** y la opción PDF del navegador.
 
+## Modo exposición
+
+La pestaña **Modo exposición** presenta seis pantallas, una a la vez: datos y modelo, EOQ y lotes, capacidad, decisión económica, sensibilidad y puntos de equilibrio, y preguntas de gerencia.
+
+- Use **Anterior**, **Siguiente**, los seis botones numerados o las flechas izquierda/derecha del teclado. Las flechas no cambian de pantalla mientras edita un campo.
+- La pantalla y el escenario se conservan al avanzar. El nombre del escenario siempre aparece arriba.
+- Cambie la demanda con el control superior y pulse **Aplicar**. Se conservan los demás parámetros activos. **Restaurar G1** recupera todos los datos originales.
+- Cambie otros parámetros en **Análisis completo**; volver al modo exposición actualiza sus indicadores, curvas y conclusiones con esos datos.
+- En EOQ seleccione la fuente para comparar sus curvas de pedidos, mantenimiento y TRC; la tabla conserva las tres fuentes y las curvas marcan EOQ y lote real.
+- La pantalla económica muestra cinco políticas: contenedor 20 actual/adicional, contenedor 40 actual/adicional y local con EOQ. Las opciones inviables se excluyen; una capacidad adicional innecesaria no compite.
+- Las curvas de precio y financiación cambian una variable desde el escenario activo; el precio recalcula EOQ, posiciones y bodega local en cada punto. Los umbrales no se presentan como viables si faltan capacidad o referencia importada.
+- **Pantalla completa** amplía la pantalla actual y permite seguir navegando. El botón cambia para salir; también puede usar Escape. Depende del soporte y los permisos del navegador.
+- Cada botón de gerencia empieza en G1 y modifica únicamente su parámetro. Aplicar demanda y navegar conservan el escenario; elegir una variación restaura G1 antes de aplicar esa variación.
+- En portátil se muestran indicadores, gráfica/tabla y conclusión sin desplazamiento vertical. En pantallas pequeñas se apilan bloques y se habilita desplazamiento; las tablas y gráficas anchas pueden desplazarse horizontalmente para mantenerlas legibles.
+
+### Archivos que actualizar en GitHub
+
+Actualizar `app.py`, `embedded.py`, `dist/index.html`, `dist/app.js`, `dist/style.css`, `README.md`, `VALIDACION.md` y `tests/test_streamlit.py`. Añadir `dist/presentation.js` y `tests/presentation.test.cjs`. `requirements.txt` y `dist/model.js` conservan sus versiones.
+
 ## Uso por etapas
 
 1. **Resumen:** G1 recomienda importar 20 pies con ampliación. CTA $967.046.684,21; ahorro frente al local $11.996.142,22. La ampliación aporta 90 posiciones: 165 disponibles, 76 necesarias.

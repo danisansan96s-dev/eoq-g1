@@ -22,8 +22,8 @@ st.html("""<style>
 def eoq_component():
     return component(
         "eoq_g1_document",
-        html='<iframe title="Herramienta EOQ G1" '
-             'sandbox="allow-scripts allow-same-origin allow-downloads allow-modals" '
+        html='<iframe title="Herramienta EOQ G1" allow="fullscreen" allowfullscreen '
+             'sandbox="allow-scripts allow-same-origin allow-downloads allow-modals allow-forms" '
              'style="display:block;width:100%;height:780px;border:0;border-radius:12px;" '
              '></iframe>',
         js="""

@@ -16,6 +16,8 @@ class StreamlitTests(unittest.TestCase):
         self.assertNotIn('href="style.css"', html)
         self.assertIn('root.EOQ=', html)
         self.assertIn('function render()', html)
+        self.assertIn('function renderExposure()', html)
+        self.assertIn('Modo exposición', html)
         self.assertIn('scrollIntoView', html)
         self.assertIn('Descargar escenario', html)
         self.assertIn('Preguntas de gerencia', html)
