@@ -1,0 +1,1 @@
+const fs=require('fs'),vm=require('vm'),path=require('path');const root=path.resolve(__dirname,'..');console.log(vm.runInNewContext(fs.readFileSync(path.join(root,'dist/model.js'),'utf8')+'\n'+fs.readFileSync(path.join(__dirname,'model.test.js'),'utf8')));
