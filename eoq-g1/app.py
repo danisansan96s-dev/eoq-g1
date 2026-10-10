@@ -2,7 +2,7 @@
 import streamlit as st
 from streamlit.components.v2 import component
 
-from embedded import build_document
+from embedded import assert_self_contained, build_document
 
 st.set_page_config(
     page_title="EOQ G1 · EAFIT",
@@ -46,6 +46,7 @@ def eoq_component():
 
 try:
     document = build_document()
+    assert_self_contained(document)
 except (OSError, ValueError) as error:
     st.error(f"No se pudo cargar la herramienta: {error}")
     st.stop()
