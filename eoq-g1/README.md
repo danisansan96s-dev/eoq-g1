@@ -54,6 +54,12 @@ La integración usa un componente v2 de Streamlit con un iframe de altura adapta
 
 Los escenarios no se envían al servidor ni persisten tras recargar. Descargue el JSON antes de cerrar si necesita conservar el resultado. El botón de descarga incluye los parámetros y cálculos del escenario activo. Para un informe PDF use **Imprimir informe** y la opción PDF del navegador.
 
+## Corrección del wrapper de Streamlit
+
+Para corregir una publicación que aún solicita `presentation.js?v=1` externamente, reemplace en GitHub **app.py** y **embedded.py** por los archivos de esta carpeta y reinicie la aplicación publicada. Mantenga `dist/presentation.js` junto a los otros recursos ya incluidos en el proyecto.
+
+El wrapper incorpora los tres scripts en su posición original: model.js, app.js y presentation.js. Los parámetros de versión se conservan como metadatos y se omiten al leer el archivo local. No queda ningún atributo src en los scripts del iframe. Si falta un recurso, se altera el orden o queda un script externo, la carga se detiene con un mensaje en lugar de mostrar una pestaña rota.
+
 ## Modo exposición
 
 La pestaña **Modo exposición** presenta seis pantallas, una a la vez: datos y modelo, EOQ y lotes, capacidad, decisión económica, sensibilidad y puntos de equilibrio, y preguntas de gerencia.
@@ -114,3 +120,56 @@ EOQ_PLAYWRIGHT=/tmp/eoq-qa/node_modules/playwright node tests/browser.test.cjs
 Para la prueba de navegador, inicie antes `streamlit run app.py --server.port 8511`; la URL de pruebas por defecto es `http://127.0.0.1:8511`. Puede cambiarla con `EOQ_TEST_URL`. `VALIDACION.md` resume los resultados reales.
 
 La carpeta está lista para subir a GitHub. No se creó el repositorio ni se desplegó en Community Cloud en esta sesión.
+
+## Simulador de escenarios EOQ
+
+Abra la pestaña **Simulador de escenarios EOQ**, junto a Aplicación EOQ G1. Esta última conserva Análisis completo y las seis pantallas de Modo exposición. Los parámetros del simulador son independientes y se conservan con `st.session_state` al navegar; modificar el simulador no cambia el análisis original.
+
+El panel izquierdo permite editar precios, costos por pedido, mantenimiento, aporte al molde, lotes completos, bodegas y cuatro demandas. La configuración inicial de demostración es 6.300, 9.000, 11.700 y 14.400 unidades/año (70 %, 100 %, 130 % y 160 % de la demanda original G1). Estos escenarios son editables y no son pronósticos ni reemplazan BASE. Puede introducir demandas positivas o aplicar un porcentaje de G1 por escenario. Base G1 también es editable; Restablecer recupera todos los datos originales. Aplicar cambios confirma los parámetros, que ya se recalculan automáticamente. Comparar escenarios activa las tres curvas. El selector de escenario controla una sola demanda en el inventario; la tabla y las barras comparan los cuatro escenarios.
+
+`simulator.py` lee los valores originales directamente de `dist/model.js`; implementa en Python sus ecuaciones de EOQ, costo y capacidad, verificadas contra los resultados del modelo original. No modifica el motor JavaScript. Funciones principales: `original_values`, `evaluate`, `sawtooth`, `reset`, `parameters` y `render_simulator`.
+
+Hay dos criterios económicos explícitos:
+
+- **Anual equivalente:** reproduce G1 con D/Q pedidos, Q/2 de inventario promedio y adquisición de D unidades. Se muestran también los pedidos enteros y el inventario final del año.
+- **Año observado:** inicia con inventario cero y un pedido al mes 0; recibe lotes completos importados y emite `ceil(D/Q)` pedidos, sin reposición al mes 12. Costea las unidades efectivamente recibidas y el mantenimiento mediante el área exacta del diente de sierra. Puede habilitar un último pedido local parcial; esta opción nunca fracciona contenedores. La frecuencia teórica, el número entero emitido y el promedio observado se distinguen en la tabla.
+
+El flete se desglosa del costo por pedido y se suma una sola vez. Transporte local corresponde a `tl`. El molde es el equivalente anual original a cargo de la empresa: `mold × (1 − p/100)`. `p` es el aporte contractual del proveedor; faltan tasa financiera y plazo para calcular intereses o amortización, por lo que no se inventan. La capacidad utiliza el lote máximo y las alternativas actual/alquiler/ampliación; el proveedor local conserva su límite anual. Las barras inviables aparecen rayadas y no participan en la recomendación. En caso de empate se muestran ambas alternativas.
+
+Plotly permite zoom, selección de curvas mediante la leyenda y exportación PNG. Descargar comparación CSV entrega las doce filas con valores numéricos; el botón de cámara de cada gráfica exporta la imagen. El modo exposición del simulador renderiza solamente la pestaña activa y recoge los parámetros en un popover; sus indicadores y conclusiones pertenecen a esa vista. Tabla, CSV y conclusiones extensas se consultan en modo completo.
+
+Pruebas adicionales:
+
+```sh
+python -m unittest discover -s tests -p 'test_*.py'
+EOQ_PLAYWRIGHT=/tmp/eoq-qa/node_modules/playwright node tests/simulator.test.cjs
+```
+
+Para publicar esta actualización, reemplace `app.py`, `requirements.txt`, `README.md` y `VALIDACION.md`; añada `simulator.py`, `tests/test_simulator.py` y `tests/simulator.test.cjs`. Los archivos de `dist` y `embedded.py` permanecen vigentes. Entrada de Community Cloud: `app.py`. Python calcula y Plotly genera las gráficas; Node.js solo se usa opcionalmente para las pruebas locales de navegador.
+
+### Factibilidad y lectura ejecutiva
+
+El simulador distingue **Factible actualmente**, **Viable con ampliación** y **No factible**, usando la capacidad actual, las opciones reales de capacidad adicional y el límite anual del proveedor. “Viable con ampliación” incluye la opción de alquiler cuando resulte la bodega de menor costo; la conclusión indica cuál se selecciona. Se muestran por separado la recomendación con capacidad actual, la que considera capacidad adicional y las alternativas excluidas. En G1 corresponden a local, 20 pies y 40 pies, respectivamente.
+
+Las barras muestran millones de COP con etiquetas horizontales; el cursor conserva el importe completo. Puntos indican que se requiere capacidad adicional; rayas y un tono atenuado señalan alternativas no factibles. La gráfica de ahorro usa `costo local − costo alternativa`; positivo significa ahorro y negativo sobrecosto. El cursor incluye el porcentaje respecto al costo local. Las alternativas inviables tienen ahorro no realizable; si el local es inviable también se señala que la referencia es solo económica. Los ahorros con ampliación están condicionados a habilitar la bodega, cuyo costo ya estaba incluido en el modelo.
+
+Las conclusiones se generan para cada escenario y describen ambas recomendaciones, ahorro, porcentaje y restricciones. Una diferencia menor al 2 % se describe como reducida: es un criterio de interpretación explícito y no cambia ninguna ecuación ni ranking.
+
+En **Modo exposición**, el panel editable se recoge en el botón **Editar parámetros** y el contenido principal ocupa todo el ancho. Use las pestañas **Inventario**, **Costos** y **Ahorro comparativo** para presentar una gráfica a la vez, conservando el selector, los indicadores y la conclusión. Al desactivarlo vuelve el panel lateral sin perder los parámetros. La composición se consulta dentro de Costos. Tabla, CSV y conclusiones de los cuatro escenarios se consultan desactivando Modo exposición.
+
+Para revisar la copia de publicación, ejecute desde `publicacion/eoq-g1`: `streamlit run app.py --server.port 8501`, luego abra `http://localhost:8501` y seleccione Simulador de escenarios EOQ. Puede probar 6.300, 9.000, 11.700 y 14.400 unidades/año; estos son valores de prueba editables, no nuevos datos originales ni resultados fijos. No se publicó esta revisión en GitHub.
+
+
+### Versión ejecutiva 2026-10-11.3 · revisión en puerto 8501
+
+La vista ejecutiva usa tres pestañas con estado y ejecución condicional: **Inventario**, **Costos** y **Ahorro comparativo**. Solo la pestaña activa genera un gráfico, sus indicadores y su conclusión; no se dejan gráficos ocultos ni tablas extensas debajo. Escenario y alternativa permanecen visibles. Los campos económicos y las cuatro demandas se siguen montando dentro del popover de parámetros, para que Streamlit no elimine sus valores al navegar.
+
+En **Costos**, alterne **Costo total** y **Composición**. La composición muestra los componentes elegidos como barras agrupadas con colores por alternativa, no como una pila dominada por adquisición. Inicialmente excluye adquisición; puede añadirla, retirar otros componentes o seleccionar solo Transporte, Mantenimiento, Pedidos, Capacidad o Molde. La escala se ajusta a la selección. Las etiquetas de barras son horizontales y muestran dos decimales, como `$967,05 M`; el valor completo en COP queda en el tooltip.
+
+Los indicadores distinguen **Factible con capacidad actual**, **Mejor permitiendo ampliar** y **Condición de esa opción**. En G1, Local es factible actualmente y 20 pies es la opción más económica permitiendo ampliar. 40 pies permanece excluido.
+
+La demostración inicial usa los factores 70/100/130/160 % sobre la demanda original del modelo, sin escribir resultados fijos. **Configurar demostración** recupera estas cuatro demandas sin modificar precios ni costos. **Restablecer valores originales** recupera todos los valores G1. El valor original `BASE.D` permanece en 9.000.
+
+La versión cargada se identifica al pie con **Simulador · 2026-10-11.3**. Para esta revisión se sincronizaron los módulos y se reinició el proceso que servía desde `publicacion/eoq-g1` en 8501; se verificó esa URL, no el servidor del proyecto en 8511. Tras un cambio Python, reinicie el servidor si conserva un módulo importado anterior. Los datos de sesión sobreviven a la navegación dentro de una ejecución; un reinicio del servidor comienza una sesión nueva.
+
+Prueba de navegador de esta copia: `EOQ_TEST_URL=http://127.0.0.1:8501 EOQ_PLAYWRIGHT=/tmp/eoq-qa/node_modules/playwright node tests/simulator.test.cjs`. No se publicó en GitHub.
