@@ -98,3 +98,29 @@ Archivos locales modificados: `simulator.py`, `tests/test_simulator.py`, `tests/
 - Se sincronizaron proyecto y `publicacion/eoq-g1` y se reinició el servidor de esa carpeta para cargar el módulo actualizado, sin depender de una importación anterior. La versión visible es **Simulador · 2026-10-11.5**. Entrada: `app.py`; servidor local activo en `http://localhost:8501`. El servidor no requiere Node.js ni rutas propias del Mac.
 
 Archivos de esta revisión: reemplazar `simulator.py`, `README.md`, `VALIDACION.md`, `tests/test_simulator.py` y `tests/simulator.test.cjs`; añadir `management.py`, `tests/test_management.py` y `tests/management.test.cjs` cuando se autorice la publicación. **No se publicó ni se subió esta revisión a GitHub.**
+
+## Confirmación y recomendación compartida · versión 2026-10-11.6
+
+- El problema de interacción era de señalización: los campos ya confirmaban con Enter/desenfoque, pero **Aplicar cambios** sólo ejecutaba otra vez el script. Se retiró ese botón redundante y se añadió una instrucción visible en parámetros y franja: confirmar con Enter o clic fuera. No hay formulario ni paso de aplicación pendiente.
+- Se añadió `decision.py`, que resume las mismas filas evaluadas usadas por las gráficas y tablas, sin nuevas ecuaciones de costo. La franja distingue mejor fuente con capacidad actual, mejor considerando capacidad adicional, costo integral, ahorro/sobrecosto respecto al local y posiciones de la bodega realmente elegida. Identifica expresamente la condición de ampliación y su costo completo. Si gana el local, el ahorro frente al local es cero; no se presenta como ventaja frente a la siguiente fuente.
+- En las tres vistas de demandas y modo normal, la franja usa parámetros, demanda y criterio actualizados del simulador. En Preguntas de gerencia usa exclusivamente la pregunta seleccionada desde G1 original, D = 9.000 y anual equivalente; se rotula **Pregunta académica · G1 independiente**. El popover **Decisión de mis parámetros** muestra aparte los valores manuales con su propio escenario y criterio. Las preguntas nunca se contaminan con esas ediciones.
+- **41 pruebas Python superadas en `publicacion/eoq-g1`**, incluidas las 11 del resumen de decisión: A–D, ampliación completa, capacidad de la bodega contratada, local inviable, ninguna fuente viable, empates, mínimos matemáticos separados, ahorro positivo/negativo/cero, criterio observado, no mutación y paridad con el motor original.
+- **653 comprobaciones de interacción en Streamlit/Chromium superadas**, sin errores de consola. Se probaron A–D en modo completo y las cuatro vistas ejecutivas, seis confirmaciones por Enter/desenfoque sobre precio/flete/aporte, franja numéricamente correcta, gráfica y TRC contra el JavaScript original, cuatro demandas editadas a 6.500/9.500/12.500/15.500, persistencia de precios/flete/aporte al navegar, preguntas G1 independientes, popup manual, restablecimiento, tooltips en COP, etiquetas en millones y CSV de doce filas.
+- Regresiones sobre el mismo wrapper: **75 comprobaciones del simulador**, **419 de gerencia** (las tres preguntas, sus siete componentes, EOQ/lotes, diferencias, gráficos, capacidad y persistencia) y **138 de las seis pantallas originales**, todas superadas sin errores de consola. Total: **1.285 comprobaciones de navegador**. Las esperas de QA consultan el dato actualizado cuando la respuesta de Streamlit llega en varios mensajes; no dan por completado el recálculo tras un tiempo fijo.
+
+Resultados con D = 9.000, anual equivalente y una variación a la vez desde G1:
+
+| Caso | Mejor fuente considerando capacidad adicional | Costo integral COP/año |
+| --- | --- | ---: |
+| A · G1 | 20 pies, condicionada a ampliación | 967.046.684,21 |
+| B · Precio local 99.000 | Proveedor local, capacidad actual | 942.728.230,67 |
+| C · Flete 20 pies 10.000.000 | Proveedor local, capacidad actual | 979.042.826,43 |
+| D · Aporte al molde 50 % | Proveedor local, capacidad actual | 965.542.826,43 |
+
+En C, el costo integral de 20 pies aumenta a 981.588.789,47 COP/año. En D, el local conserva EOQ = 707,97998386 y TRC = 16.042.826,43 COP/año; su parte del molde cae de 36.000.000 a 22.500.000. En A, los 13.000.000 de ampliación completa ya están incluidos; 40 pies sigue excluido por requerir 168 posiciones frente a 165.
+
+- Inspección visual a 1366×768 y 390×844: franja de decisión legible en las cuatro vistas, selectores reorganizados arriba, sin KPI de decisión duplicados ni nuevas gráficas. Inventario usa 190 px con márgenes que conservan el área de la curva. En Preguntas, inventario y antes/después comparten una fila; la conclusión y las notas pueden requerir un desplazamiento corto. La franja permanece fija al desplazar en portátil; en móvil se apila y no se fija para evitar tapar contenido. Las cinco columnas de antes/después se ajustan al ancho disponible.
+- Comparación de árboles sintácticos confirma que `original_values`, `evaluate`, `sawtooth`, `reset` y `demonstration` permanecen intactos. `dist/`, `app.py`, `embedded.py` y `requirements.txt` no se modificaron; tampoco se alteraron las seis pantallas originales, las restricciones ni las cuatro demandas. El resumen no requiere Node.js ni rutas del Mac en el servidor.
+- Se identificaron dos procesos locales del mismo proyecto en 8501, uno IPv4 y otro IPv6. Se reiniciaron para dejar una sola instancia de `publicacion/eoq-g1` con la versión actual. El servidor de revisión queda activo en `http://localhost:8501`, pie **2026-10-11.6**, entrada `app.py`.
+
+Archivos de esta revisión: `simulator.py`, `management.py`, `decision.py`, `README.md`, `VALIDACION.md`, `tests/test_decision.py`, `tests/interaction.test.cjs`, `tests/simulator.test.cjs` y `tests/management.test.cjs`, sincronizados en ambas carpetas. **No se publicó en GitHub ni se modificó la aplicación de Streamlit Community Cloud.**

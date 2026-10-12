@@ -67,7 +67,7 @@ def management_analysis(question):
                 after_winners=_winners(after))
 
 
-def management_conclusion(analysis):
+def management_conclusion(analysis, compact=False):
     """Conclusión calculada: preferencia integral, restricciones y efecto del cambio."""
     before_winners = analysis['before_winners']
     after_winners = analysis['after_winners']
@@ -78,10 +78,11 @@ def management_conclusion(analysis):
     text += f': {before_names} → {after_names}. '
     if after_winners:
         best = after_winners[0]
-        text += f"Costo integral recomendado: {money(best['total'])}/año. "
+        if not compact:
+            text += f"Costo integral recomendado: {money(best['total'])}/año. "
         _, ranked, _ = recommendations(analysis['after'])
         next_best = next((row for row in ranked if row not in after_winners), None)
-        if next_best:
+        if next_best and not compact:
             saving = next_best['total'] - best['total']
             percent = saving / next_best['total'] * 100 if next_best['total'] else None
             text += f"Ventaja frente a {next_best['name']}: {money(saving)}/año"
@@ -100,7 +101,7 @@ def management_conclusion(analysis):
     else:
         text += 'La viabilidad operativa se conserva. '
     excluded = [row for row in analysis['after'] if not row['feasible']]
-    if excluded:
+    if excluded and not compact:
         text += 'Excluidas: ' + '; '.join(
             row['name'] + (f" ({row['positions']} > {row['available']} posiciones)"
                            if row['positions'] > row['available'] else ' (capacidad anual del proveedor)')

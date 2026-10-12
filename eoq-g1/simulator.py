@@ -124,6 +124,7 @@ def parameters():
     if 'sim_D' not in st.session_state:
         reset()
         st.session_state.setdefault('sim_scenario', 'Base G1')
+    st.caption('Confirma cada valor con Enter o haciendo clic fuera del campo. Los resultados se actualizan automáticamente; no necesitas un botón para aplicar.')
     def inputs(fields):
         for key, label in fields:
             integer = key in ['q20', 'q40', 'units', 'positions', 'rentPositions', 'expandPositions']
@@ -156,7 +157,6 @@ def parameters():
                     st.session_state['sim_d'+str(index)] = float(original_values()['D'])*st.session_state['sim_factor'+str(index)]/100
                 st.button('Usar porcentaje · '+name,on_click=factor,key='factor_'+str(i))
     st.button('Restablecer valores originales',on_click=reset,width='stretch')
-    st.button('Aplicar cambios',width='stretch',help='Los cambios ya se recalculan automáticamente.')
     for key in p:
         p[key] = st.session_state['sim_'+key]
     return p
@@ -305,7 +305,65 @@ def comparison_chart(results, saving=False, exposure=False, alternative="Compara
 
 
 COMPONENTS = {'acquisition':'Adquisición', 'ordering':'Pedidos sin flete', 'freight':'Transporte', 'holding':'Mantenimiento', 'capacity':'Capacidad', 'mold':'Molde a cargo'}
-SIMULATOR_VERSION = '2026-10-11.5'
+SIMULATOR_VERSION = '2026-10-11.6'
+
+
+def render_decision(rows, p, scenario, basis, academic=False):
+    """Franja común: utiliza exactamente las filas de la vista activa."""
+    from decision import decision_summary, decision_conclusion
+    context = 'Pregunta académica · G1 independiente' if academic else 'Simulador editable'
+    summary = decision_summary(rows, p, scenario, basis, context=context)
+    best = summary['best']
+    def names(items):
+        return ' / '.join(row['name'] for row in items) or 'Ninguna'
+    def ids(items):
+        return ','.join(row['id'] for row in items)
+    total = best['total'] if best else None
+    saving, percent = summary['saving'], summary['saving_percent']
+    capacity = (f"{best['positions']} / {summary['chosen_capacity']} posiciones · "
+                f"{p['positions']} actuales") if best else 'Sin opción operativa'
+    cards = [
+        ('current', 'Mejor con capacidad actual', names(summary['current_winners']), '',
+         f'data-id="{summary["current_winners"][0]["id"] if summary["current_winners"] else ""}" data-ids="{ids(summary["current_winners"])}"'),
+        ('winner', 'Mejor considerando ampliación', names(summary['winners']), '',
+         f'data-id="{best["id"] if best else ""}" data-ids="{ids(summary["winners"])}"'),
+        ('total', 'Costo integral · COP/año', short_money(total) if total is not None else '—', '',
+         f'data-value="{total if total is not None else ""}" title="{money(total) if total is not None else "No hay una recomendación factible"}"'),
+        ('saving', 'Ahorro (+) / sobrecosto (−) vs. local', short_money(saving) if saving is not None else '—',
+         number(percent) + ' %' if percent is not None else 'Porcentaje no definido',
+         f'data-value="{saving if saving is not None else ""}" data-percent="{percent if percent is not None else ""}" data-reference-id="local" title="{money(saving) if saving is not None else "Sin comparación"}"'),
+        ('capacity', 'Factibilidad y capacidad', summary['status'], capacity,
+         f'data-positions="{best["positions"] if best else ""}" data-available="{summary["chosen_capacity"] if best else ""}"')]
+    body = ''.join(f'<div class="eoq-decision-item" data-field="{key}" {attributes}>'
+                   f'<span class="eoq-decision-label">{escape(label)}</span>'
+                   f'<strong>{escape(value)}</strong><small>{escape(detail)}</small></div>'
+                   for key, label, value, detail, attributes in cards)
+    hint = ('Las preguntas parten de G1; tus ediciones manuales se consultan por separado.' if academic
+            else 'Confirma con Enter o clic fuera del campo; el cálculo es automático.')
+    note = summary['condition'] + ' Decisión por costo integral; el menor TRC se distingue en la tabla.'
+    if summary['local'] is not None and not summary['local_reference_feasible']:
+        note += ' La referencia local no es viable.'
+    color = COLORS[best['id']] if best else '#5c6260'
+    st.html('''<style>
+      .eoq-decision{background:#f5faf7;border:1px solid #d1e1d7;border-left:4px solid #087d68;border-radius:6px;padding:7px 10px;color:#18332f}
+      .eoq-decision-head{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;font-size:12px;line-height:1.3;margin-bottom:5px}
+      .eoq-decision-head b{font-weight:650}.eoq-decision-head span{color:#344a40}
+      .eoq-decision-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px}
+      .eoq-decision-item{min-width:0}.eoq-decision-label{display:block;font-size:11px;line-height:1.3;margin-bottom:2px}
+      .eoq-decision-item strong{display:block;font-size:17px;line-height:1.25;overflow-wrap:anywhere}
+      .eoq-decision-item small{display:block;font-size:11px;line-height:1.3}
+      .eoq-decision-item[data-field="capacity"] strong{font-size:14px}
+      .eoq-decision-foot{font-size:11px;line-height:1.3;margin:5px 0 0}
+      [data-testid="stLayoutWrapper"]:has(> .st-key-sim_decision){position:sticky;top:3.6rem;z-index:20}
+      @media(max-width:760px){.eoq-decision-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}.eoq-decision-item strong{font-size:15px}.eoq-decision-head{font-size:11px}[data-testid="stLayoutWrapper"]:has(> .st-key-sim_decision){position:static}}
+    </style><section class="eoq-decision" aria-label="Recomendación de abastecimiento" data-context="'''
+        + ('academic' if academic else 'editable') + '" style="border-left-color:' + color + '" data-scenario="' + escape(scenario)
+        + '" data-basis="' + escape(basis) + f'" data-demand="{summary["demand"]}">'
+        + '<div class="eoq-decision-head"><b>' + escape(context + ' · ' + scenario + ' · '
+          + number(summary['demand'], 0) + ' u/año · ' + basis) + '</b><span>' + escape(hint) + '</span></div>'
+        + '<div class="eoq-decision-grid">' + body + '</div><p class="eoq-decision-foot" title="'
+        + escape(decision_conclusion(summary)) + '">' + escape(note) + '</p></section>')
+
 
 MANAGEMENT_COMPONENTS = {'Costo integral': 'total', 'Ordenar': 'ordering',
                          'Almacenar': 'holding', 'TRC': 'trc',
@@ -313,22 +371,26 @@ MANAGEMENT_COMPONENTS = {'Costo integral': 'total', 'Ordenar': 'ordering',
                          'Molde': 'mold'}
 
 
-def management_controls():
+def management_controls(exposure=False):
     from management import QUESTION_LABELS
     columns = st.columns([1, 1])
     question = columns[0].selectbox('Pregunta de gerencia', QUESTION_LABELS,
-                                   key='sim_management_question')
+                                   key='sim_management_question', label_visibility='collapsed' if exposure else 'visible')
     component = columns[1].selectbox('Costo a comparar', list(MANAGEMENT_COMPONENTS),
-                                    key='sim_management_component')
+                                    key='sim_management_component', label_visibility='collapsed' if exposure else 'visible')
     return question, component
 
 
-def render_management(exposure=False):
+def render_management(exposure=False, decision_area=None):
     """Sensibilidades académicas aisladas de las cuatro demandas editables."""
     from management import management_analysis, management_conclusion
     with st.container(key='sim_management_panel'):
-        question, component_label = management_controls()
+        question, component_label = management_controls(exposure)
         analysis = management_analysis(question)
+        if decision_area is not None:
+            with decision_area:
+                render_decision(analysis['after'], analysis['parameters'], question,
+                                'Anual equivalente', academic=True)
         parameter = analysis['parameter']
         if parameter is None:
             change = 'Parámetros originales'
@@ -336,7 +398,7 @@ def render_management(exposure=False):
             unit = ' %' if parameter == 'p' else ' COP/unidad' if parameter == 'vl' else ' COP/pedido'
             change = (analysis['label'] + ': ' + number(analysis['before_parameter'], 0)
                       + ' → ' + number(analysis['after_parameter'], 0) + unit)
-        st.caption(question + ' · G1 original · ' + number(analysis['base']['D'], 0)
+        st.caption(change if exposure else question + ' · G1 original · ' + number(analysis['base']['D'], 0)
                    + ' u/año · Anual equivalente · ' + change)
         costs = relevant_costs(analysis['after'])
         winners = {row['id'] for row in analysis['after_winners']}
@@ -373,11 +435,15 @@ def render_management(exposure=False):
         table_html = '''<style>
           .eoq-management,.eoq-management-comparison{font-size:13px;line-height:1.25;color:#18332f}
           .eoq-management table,.eoq-management-comparison table{width:100%;border-collapse:collapse;background:white;border:1px solid #d9e3dc}
+          .eoq-management-comparison table{table-layout:fixed}
+          .eoq-management-comparison td,.eoq-management-comparison th{white-space:normal;overflow-wrap:anywhere}
+          .eoq-management-comparison th:first-child{width:20%}
           .eoq-management caption,.eoq-management-comparison caption{text-align:left;font-size:15px;font-weight:650;padding-bottom:3px;color:#18332f}
           .eoq-management th,.eoq-management td,.eoq-management-comparison th,.eoq-management-comparison td{padding:3px 8px;border-bottom:1px solid #e3e9e4}
           .eoq-management thead,.eoq-management-comparison thead{background:#edf3ed;font-size:12px}
           .eoq-management th,.eoq-management-comparison th{text-align:left}
           .eoq-management td,.eoq-management-comparison td{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+          .eoq-management-comparison td{white-space:normal}
           .eoq-management small{display:block;font-size:10px;line-height:1.2;font-weight:600}
           .eoq-management td[data-field="trc"]:has(small),.eoq-management td[data-field="total"]:has(small){background:#d8eee6;color:#084d3e;font-weight:650}
           .eoq-management .eoq-management-status{text-align:left;white-space:normal;font-size:12px;font-weight:600}
@@ -389,6 +455,7 @@ def render_management(exposure=False):
             .eoq-management table,.eoq-management tbody,.eoq-management tr,.eoq-management th,.eoq-management td,
             .eoq-management-comparison table,.eoq-management-comparison tbody,.eoq-management-comparison tr,.eoq-management-comparison th,.eoq-management-comparison td{display:block}
             .eoq-management caption,.eoq-management-comparison caption{display:block;width:100%;box-sizing:border-box;padding:6px 8px}
+            .eoq-management-comparison th:first-child{width:auto}
             .eoq-management tbody th,.eoq-management-comparison tbody th{background:#edf3ed}
             .eoq-management tr,.eoq-management-comparison tr{border-bottom:2px solid #d9e3dc}
             .eoq-management td,.eoq-management-comparison td{display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;white-space:normal}
@@ -409,8 +476,11 @@ def render_management(exposure=False):
                 '<p class="eoq-management-note">Diferencia = después − antes; porcentaje respecto a G1. — indica costo base cero.</p></section>')
         st.html(table_html.split('</style>', 1)[0] + '</style>')
         def draw_question_inventory():
-            st.plotly_chart(inventory_chart(analysis['after'], analysis['parameters'], False,
-                                            height=220 if exposure else 270),
+            chart = inventory_chart(analysis['after'], analysis['parameters'], False,
+                                    height=190 if exposure else 270)
+            if exposure:
+                chart.update_layout(margin=dict(l=40, r=20, t=35, b=60))
+            st.plotly_chart(chart,
                             key='sim_management_inventory', width='stretch',
                             config={'displaylogo': False,
                                     'toImageButtonOptions': {'filename': 'gerencia_eoq'}})
@@ -425,7 +495,7 @@ def render_management(exposure=False):
             draw_question_inventory()
             st.html(table_html)
             st.html(comparison_html)
-        st.html('<p class="eoq-management-conclusion">' + escape(management_conclusion(analysis)) + '</p>')
+        st.html('<p class="eoq-management-conclusion">' + escape(management_conclusion(analysis, compact=exposure)) + '</p>')
 
 
 def demonstration():
@@ -485,32 +555,50 @@ def render_simulator():
         st.button('Comparar escenarios',on_click=lambda:st.session_state.update(sim_selector='Comparar todas las alternativas'))
     with main:
         management_active = exposure and st.session_state.get('sim_exec_tab') == 'Preguntas de gerencia'
+        manual_decision = None
         if management_active:
             with header[2]:
-                selectors = st.popover('Demandas del simulador', help='Las cuatro demandas se conservan aparte. Las preguntas académicas siempre parten de G1 original.')
+                selector_controls, manual_controls = st.columns(2)
+                selectors = selector_controls.popover('Demandas del simulador', help='Las cuatro demandas se conservan aparte. Las preguntas académicas siempre parten de G1 original.')
+                manual_decision = manual_controls.popover('Decisión de mis parámetros')
         else:
-            selectors = st.container()
+            selectors = header[2] if exposure else st.container()
         with selectors:
             top=st.columns(2)
             selected=top[0].selectbox('Alternativa',['Comparar todas las alternativas',*NAMES.values()],key='sim_selector')
             scenario=top[1].selectbox('Escenario de inventario',SCENARIOS,key='sim_scenario')
+        decision_area=st.container(key='sim_decision')
+        try:
+            results={name:evaluate(p,st.session_state['sim_d'+str(i)],basis.startswith('Año observado'),partial) for i,name in enumerate(SCENARIOS)}
+            simulation_error=None
+        except ValueError as error:
+            simulation_error=str(error)
         if exposure:
             tabs=st.tabs(['Inventario','Costos','Ahorro comparativo','Preguntas de gerencia'],key='sim_exec_tab',on_change='rerun')
             if tabs[3].open:
+                if manual_decision is not None:
+                    with manual_decision:
+                        st.caption('Análisis separado: usa tus parámetros y la demanda seleccionada del simulador. No modifica el G1 de las preguntas académicas.')
+                        if simulation_error:
+                            st.warning(simulation_error)
+                        else:
+                            render_decision(results[scenario],p,scenario,basis)
                 with tabs[3]:
-                    render_management(exposure=True)
+                    render_management(exposure=True,decision_area=decision_area)
                 st.caption('Simulador · '+SIMULATOR_VERSION+' · '+st.session_state['sim_management_question']+' · G1 original · Anual equivalente')
                 return
             # Mantener los widgets aun al navegar: Streamlit conserva la pregunta
             # y el componente seleccionado, sin alterar las demandas del simulador.
-            with header[2]:
-                with st.popover('Seleccionar pregunta de gerencia'):
+            with controls:
+                with st.expander('Preguntas de gerencia · G1 independiente'):
                     management_controls()
-        try:
-            results={name:evaluate(p,st.session_state['sim_d'+str(i)],basis.startswith('Año observado'),partial) for i,name in enumerate(SCENARIOS)}
-        except ValueError as error:
-            st.error(str(error));return
+        if simulation_error:
+            with decision_area:
+                st.error(simulation_error)
+            return
         rows=results[scenario]
+        with decision_area:
+            render_decision(rows,p,scenario,basis)
         visible=rows if selected.startswith('Comparar') else [r for r in rows if r['name']==selected]
         current,ranked,excluded=recommendations(rows)
         best=ranked[0] if ranked else None
@@ -530,10 +618,18 @@ def render_simulator():
                 columns[3].metric('Condición de esa opción',feasibility(best) if best else 'No factible')
 
         def draw_inventory():
-            columns=st.columns(4)
-            for col,label,value in zip(columns,['Demanda · u/año','Lote · unidades','Pedidos emitidos / D÷Q','Inventario promedio'],[number(reference['demand'],0),number(reference['Q']),str(reference['count'])+' / '+number(reference['theoretical'],3),number(reference['average'])]):
-                col.metric(label,value,help=reference['name'])
-            st.plotly_chart(inventory_chart(visible,p,partial,height=230 if exposure else 270),key='sim_inventory',width='stretch',config={'displaylogo':False,'toImageButtonOptions':{'filename':'inventario_eoq'}})
+            labels=['Demanda · u/año','Lote · unidades','Pedidos emitidos / D÷Q','Inventario promedio']
+            values=[number(reference['demand'],0),number(reference['Q']),str(reference['count'])+' / '+number(reference['theoretical'],3),number(reference['average'])]
+            if exposure:
+                st.caption(reference['name']+' · '+' · '.join(label+': '+value for label,value in zip(labels[1:],values[1:])))
+            else:
+                columns=st.columns(4)
+                for col,label,value in zip(columns,labels,values):
+                    col.metric(label,value,help=reference['name'])
+            chart=inventory_chart(visible,p,partial,height=190 if exposure else 270)
+            if exposure:
+                chart.update_layout(margin=dict(l=40,r=20,t=35,b=60))
+            st.plotly_chart(chart,key='sim_inventory',width='stretch',config={'displaylogo':False,'toImageButtonOptions':{'filename':'inventario_eoq'}})
             render_relevant_costs(rows,scenario,basis.startswith('Año observado'))
             inventory_note = 'Reposición instantánea; el último ciclo puede ser incompleto, sin emitir otro pedido al mes 12.'
             if exposure:
@@ -542,7 +638,8 @@ def render_simulator():
                 st.info(' · '.join(r['name']+': '+feasibility(r)+f" ({r['positions']} posiciones)" for r in visible)+'. '+inventory_note)
 
         def draw_costs():
-            economic_metrics()
+            if not exposure:
+                economic_metrics()
             view=st.radio('Visualización de costos',['Costo total','Composición'],horizontal=True,key='sim_cost_view',label_visibility='collapsed')
             if view=='Composición':
                 components=st.multiselect('Componentes a analizar',list(COMPONENTS),default=[c for c in COMPONENTS if c!='acquisition'],format_func=COMPONENTS.get,key='sim_components')
@@ -556,9 +653,11 @@ def render_simulator():
             st.caption('Capacidad actual: '+(current[0]['name'] if current else 'ninguna')+'. Con capacidad adicional: '+(best['name']+' · '+short_money(best['total'])+' · '+feasibility(best) if best else 'ninguna')+'. Excluidas: '+(', '.join(r['name'] for r in excluded) or 'ninguna')+'.')
 
         def draw_savings():
-            economic_metrics(saving=True)
+            if not exposure:
+                economic_metrics(saving=True)
             st.plotly_chart(comparison_chart(results,saving=True,exposure=exposure,alternative=selected),key='sim_savings',width='stretch',config={'displaylogo':False})
-            st.info(f"{scenario}: ahorro frente al local {short_money(gain)} ({number(percent)} %)" if percent is not None else 'No hay una recomendación factible.')
+            if not exposure:
+                st.info(f"{scenario}: ahorro frente al local {short_money(gain)} ({number(percent)} %)" if percent is not None else 'No hay una recomendación factible.')
             st.caption('Puntos: ahorro potencial sujeto a ampliar capacidad. Rayas: ahorro no realizable por inviabilidad. Positivo = ahorro; negativo = sobrecosto. '+('La referencia local también es inviable.' if not local['feasible'] else ''))
 
         if exposure:
