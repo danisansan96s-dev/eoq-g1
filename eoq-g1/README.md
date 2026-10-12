@@ -10,7 +10,7 @@ Herramienta independiente de apoyo a la decisión EOQ. Conserva el diseño y los
 4. Seleccione repositorio **eoq-g1**, rama **main** y archivo principal **app.py**.
 5. En opciones avanzadas seleccione **Python 3.11**, versión usada en la verificación, y despliegue.
 
-No requiere Node.js, npm, paquetes del sistema, secretos, Excel, Word ni rutas del Mac para iniciar. La única dependencia directa del servidor es Streamlit 1.64.0. Los costos y gráficos se calculan en el navegador.
+No requiere Node.js, npm, paquetes del sistema, secretos, Excel, Word ni rutas del Mac para iniciar. El servidor usa Streamlit 1.64.0 y Plotly 7.1.0. El análisis original se calcula en el navegador; el simulador utiliza Python y Plotly.
 
 Documentación oficial: [despliegue en Community Cloud](https://docs.streamlit.io/deploy/streamlit-community-cloud/deploy-your-app) y [componentes v2](https://docs.streamlit.io/develop/api-reference/custom-components/st.components.v2.component).
 
@@ -36,6 +36,8 @@ También puede abrir `dist/index.html` directamente en un navegador para usar la
 ```text
 eoq-g1/
 ├── app.py                 # Archivo de entrada para Streamlit
+├── simulator.py           # Simulador y sus cuatro vistas ejecutivas
+├── management.py          # Sensibilidades independientes de G1
 ├── embedded.py            # Documento HTML autónomo con CSS y JS incorporados
 ├── requirements.txt
 ├── .streamlit/config.toml
@@ -155,14 +157,14 @@ Las barras muestran millones de COP con etiquetas horizontales; el cursor conser
 
 Las conclusiones se generan para cada escenario y describen ambas recomendaciones, ahorro, porcentaje y restricciones. Una diferencia menor al 2 % se describe como reducida: es un criterio de interpretación explícito y no cambia ninguna ecuación ni ranking.
 
-En **Modo exposición**, el panel editable se recoge en el botón **Editar parámetros** y el contenido principal ocupa todo el ancho. Use las pestañas **Inventario**, **Costos** y **Ahorro comparativo** para presentar una gráfica a la vez, conservando el selector, los indicadores y la conclusión. Al desactivarlo vuelve el panel lateral sin perder los parámetros. La composición se consulta dentro de Costos. Tabla, CSV y conclusiones de los cuatro escenarios se consultan desactivando Modo exposición.
+En **Modo exposición**, el panel editable se recoge en el botón **Editar parámetros** y el contenido principal ocupa todo el ancho. Use las pestañas **Inventario**, **Costos**, **Ahorro comparativo** y **Preguntas de gerencia** para presentar una gráfica a la vez, conservando el selector, los indicadores y la conclusión. Al desactivarlo vuelve el panel lateral sin perder los parámetros. La composición se consulta dentro de Costos. La tabla detallada, CSV y conclusiones de los cuatro escenarios se consultan desactivando Modo exposición; la tabla compacta de TRC también está disponible en Inventario durante la exposición.
 
 Para revisar la copia de publicación, ejecute desde `publicacion/eoq-g1`: `streamlit run app.py --server.port 8501`, luego abra `http://localhost:8501` y seleccione Simulador de escenarios EOQ. Puede probar 6.300, 9.000, 11.700 y 14.400 unidades/año; estos son valores de prueba editables, no nuevos datos originales ni resultados fijos. No se publicó esta revisión en GitHub.
 
 
-### Versión ejecutiva 2026-10-11.3 · revisión en puerto 8501
+### Versión ejecutiva 2026-10-11.5 · revisión en puerto 8501
 
-La vista ejecutiva usa tres pestañas con estado y ejecución condicional: **Inventario**, **Costos** y **Ahorro comparativo**. Solo la pestaña activa genera un gráfico, sus indicadores y su conclusión; no se dejan gráficos ocultos ni tablas extensas debajo. Escenario y alternativa permanecen visibles. Los campos económicos y las cuatro demandas se siguen montando dentro del popover de parámetros, para que Streamlit no elimine sus valores al navegar.
+La vista ejecutiva usa cuatro pestañas con estado y ejecución condicional: **Inventario**, **Costos**, **Ahorro comparativo** y **Preguntas de gerencia**. Solo la pestaña activa genera un gráfico, sus indicadores y su conclusión; no se dejan gráficos ocultos ni tablas extensas debajo. Escenario y alternativa permanecen visibles en las tres vistas de demandas; en Preguntas de gerencia se conservan en el popover Demandas del simulador porque las preguntas usan el G1 original. Los campos económicos y las cuatro demandas se siguen montando dentro del popover de parámetros, para que Streamlit no elimine sus valores al navegar.
 
 En **Costos**, alterne **Costo total** y **Composición**. La composición muestra los componentes elegidos como barras agrupadas con colores por alternativa, no como una pila dominada por adquisición. Inicialmente excluye adquisición; puede añadirla, retirar otros componentes o seleccionar solo Transporte, Mantenimiento, Pedidos, Capacidad o Molde. La escala se ajusta a la selección. Las etiquetas de barras son horizontales y muestran dos decimales, como `$967,05 M`; el valor completo en COP queda en el tooltip.
 
@@ -170,6 +172,28 @@ Los indicadores distinguen **Factible con capacidad actual**, **Mejor permitiend
 
 La demostración inicial usa los factores 70/100/130/160 % sobre la demanda original del modelo, sin escribir resultados fijos. **Configurar demostración** recupera estas cuatro demandas sin modificar precios ni costos. **Restablecer valores originales** recupera todos los valores G1. El valor original `BASE.D` permanece en 9.000.
 
-La versión cargada se identifica al pie con **Simulador · 2026-10-11.3**. Para esta revisión se sincronizaron los módulos y se reinició el proceso que servía desde `publicacion/eoq-g1` en 8501; se verificó esa URL, no el servidor del proyecto en 8511. Tras un cambio Python, reinicie el servidor si conserva un módulo importado anterior. Los datos de sesión sobreviven a la navegación dentro de una ejecución; un reinicio del servidor comienza una sesión nueva.
+La versión cargada se identifica al pie con **Simulador · 2026-10-11.5**. La copia para revisión se sincroniza en `publicacion/eoq-g1` y se comprueba en el puerto 8501. Tras un cambio Python, reinicie el servidor si conserva un módulo importado anterior. Los datos de sesión sobreviven a la navegación dentro de una ejecución; un reinicio del servidor comienza una sesión nueva.
+
+Debajo de la gráfica de inventario, **Costos EOQ** compara las tres alternativas del escenario seleccionado, incluso si la gráfica muestra una sola. Presenta ordenar, almacenar y TRC en COP/año con separadores de miles. El menor TRC matemático se destaca independientemente de la factibilidad, que conserva los tres estados actuales; los empates se reconocen con la misma tolerancia de un centavo del proyecto.
+
+En el modelo original, ordenar incluye flete internacional, nacionalización, transporte nacional y administración; para el local incluye transporte, inspección y administración. La tabla utiliza `ordering + freight` para reconstruir este costo completo, sin duplicar el transporte que las otras vistas desglosan. **TRC = ordenar + almacenar**; excluye adquisición, capacidad y molde. El costo integral y sus recomendaciones conservan sus fórmulas y resultados.
+
+La tabla respeta el criterio temporal activo: **Anual equivalente** usa D/Q y Q/2; **Año observado** usa pedidos enteros e inventario promedio integrado durante los 12 meses. El criterio aparece explicado debajo de la tabla. Cambiar demanda, precios, costos por pedido, tasa o lotes actualiza las tres filas. En exposición, la gráfica se reduce a 230 px; en pantallas pequeñas las filas se reorganizan con sus etiquetas para conservar todos los datos.
+
+La leyenda del inventario conserva los nombres y colores de las tres alternativas; la factibilidad se consulta en la tabla y al pasar el cursor por las curvas. Esto evita superponer la leyenda y el eje de meses en pantallas pequeñas. Pandas, ya usado por las tablas detalladas, se importa al iniciar el módulo para evitar una importación parcial al abrir varias sesiones simultáneamente.
 
 Prueba de navegador de esta copia: `EOQ_TEST_URL=http://127.0.0.1:8501 EOQ_PLAYWRIGHT=/tmp/eoq-qa/node_modules/playwright node tests/simulator.test.cjs`. No se publicó en GitHub.
+
+### Preguntas de gerencia del simulador
+
+Seleccione **Preguntas de gerencia** en Modo exposición, o abra la sección del mismo nombre en modo completo. Elija **Escenario original**, **Pregunta 1**, **Pregunta 2** o **Pregunta 3**. Cada selección vuelve a leer G1 desde `dist/model.js`, con demanda original de 9.000 y criterio anual equivalente; únicamente cambia precio local a 99.000, flete internacional de 20 pies a 10.000.000 o aporte del proveedor al molde a 50 %, respectivamente. Estos valores corresponden a las tres variaciones del texto original del caso. No toma ni modifica las cuatro demandas editadas, sus parámetros, el criterio observado ni la selección de alternativa del simulador.
+
+La gráfica compara los tres inventarios durante 12 meses con sus límites de capacidad. Debajo, la tabla muestra ordenar (incluido todo flete por pedido una vez), almacenar, TRC, costo integral y factibilidad. **Costo a comparar** permite consultar adquisición, ordenar, almacenar, TRC, capacidad, molde o costo integral en **Antes G1 vs. Después**, con diferencia en COP/año y porcentaje respecto al mismo componente de G1. Un porcentaje con costo base cero se indica como no definido. La preferencia integral excluye alternativas inviables; el menor TRC es una marca matemática independiente.
+
+El precio local recalcula su EOQ, lote y costos. El flete recalcula el EOQ de referencia de 20 pies y sus costos de ordenar; su lote real permanece completo. El aporte al molde solamente cambia molde y costo integral: `mold × (1 − p/100)`, sin intereses inventados ni cambios al EOQ. La conclusión explica el cambio de preferencia, los componentes afectados y la viabilidad. Los 20 pies incluyen el costo anual completo de ampliación; los 40 pies siguen excluidos por requerir 168 posiciones frente a 165 disponibles.
+
+La pregunta y el componente se conservan al navegar por las cuatro vistas ejecutivas. **Seleccionar pregunta de gerencia** recoge esos selectores cuando está activa otra vista. **Demandas del simulador** mantiene los selectores de demanda y alternativa durante la vista gerencial; no altera la base de las preguntas.
+
+Archivos de esta revisión en `publicacion/eoq-g1`: reemplazar `simulator.py`, `README.md`, `VALIDACION.md`, `tests/test_simulator.py` y `tests/simulator.test.cjs`; añadir `management.py`, `tests/test_management.py` y `tests/management.test.cjs` cuando se autorice la publicación. `app.py`, `embedded.py`, `requirements.txt` y `dist/` conservan sus archivos anteriores. La entrada sigue siendo `app.py`. Esta revisión se deja solamente en localhost.
+
+Prueba adicional: `EOQ_TEST_URL=http://127.0.0.1:8501 EOQ_PLAYWRIGHT=/tmp/eoq-qa/node_modules/playwright node tests/management.test.cjs`.

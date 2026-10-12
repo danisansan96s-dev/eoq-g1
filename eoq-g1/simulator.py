@@ -1,11 +1,15 @@
 """Simulador independiente; datos originales leídos del modelo JavaScript del taller."""
 import ast
 import csv
+from html import escape
 import io
 import math
 import re
 from pathlib import Path
 
+# Completar la dependencia de las tablas antes de que Plotly la consulte
+# desde sesiones concurrentes durante el arranque del servidor.
+import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
@@ -165,6 +169,73 @@ def feasibility(row):
     return 'Factible actualmente' if row['current_feasible'] else 'Viable con ampliación'
 
 
+def relevant_costs(rows):
+    """TRC original: ordenar incluye todo costo por pedido, incluido transporte.
+
+    Se utilizan los componentes del criterio temporal ya evaluado. La marca
+    del mínimo es matemática; la factibilidad se informa independientemente.
+    """
+    costs = [dict(id=row['id'], name=row['name'],
+                  ordering=row['ordering'] + row['freight'],
+                  holding=row['holding'],
+                  trc=row['ordering'] + row['freight'] + row['holding'],
+                  status=feasibility(row)) for row in rows]
+    minimum = min((item['trc'] for item in costs), default=None)
+    for item in costs:
+        item['minimum'] = abs(item['trc'] - minimum) < .01
+    return costs
+
+
+def render_relevant_costs(rows, scenario, observed):
+    """Tabla compacta accesible; siempre compara las tres fuentes del escenario."""
+    body = []
+    for item, row in zip(relevant_costs(rows), rows):
+        cells = []
+        for key, label in [('ordering', 'Ordenar'), ('holding', 'Almacenar'), ('trc', 'TRC')]:
+            badge = '<span class="eoq-trc-badge">Menor TRC</span>' if key == 'trc' and item['minimum'] else ''
+            amount = '$ ' + number(item[key], 0)
+            cells.append(f'<td class="eoq-trc-amount eoq-trc-{key}" data-label="{label} · COP/año" data-value="{item[key]}">{amount}{badge}</td>')
+        state = 'current' if item['status'] == 'Factible actualmente' else 'expanded' if row['feasible'] else 'excluded'
+        capacity = f"{row['positions']} posiciones · " + (row['chosen'] if row['feasible'] else 'fuera de los límites disponibles')
+        body.append(f'<tr data-alternative="{item["id"]}" data-minimum="{str(item["minimum"]).lower()}">'
+                    f'<th scope="row" style="border-left:4px solid {COLORS[item["id"]]}">{escape(item["name"])}</th>'
+                    + ''.join(cells)
+                    + f'<td data-label="Factibilidad" class="eoq-trc-status {state}" title="{escape(capacity)}">{escape(item["status"])}</td></tr>')
+    criterion = ('Año observado: pedidos enteros e inventario promedio de los 12 meses.' if observed
+                 else 'Anual equivalente: ordenar = A × D/Q; almacenar = v × r × Q/2.')
+    st.html('''<style>
+      .eoq-trc{color:#18332f;font-size:14px;line-height:1.4}
+      .eoq-trc table{width:100%;border-collapse:collapse;background:#fff;border:1px solid #d9e3dc;border-radius:6px}
+      .eoq-trc caption{text-align:left;font-size:16px;font-weight:650;color:#18332f;padding:0 0 3px}
+      .eoq-trc th,.eoq-trc td{padding:4px 10px;border-bottom:1px solid #e3e9e4;vertical-align:middle}
+      .eoq-trc thead th{background:#edf3ed;font-weight:600;text-align:right;font-size:13px}
+      .eoq-trc thead th:first-child,.eoq-trc thead th:last-child{text-align:left}
+      .eoq-trc tbody th{text-align:left;font-weight:600;width:18%}
+      .eoq-trc-amount{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+      .eoq-trc-trc{font-weight:700}
+      .eoq-trc tr[data-minimum="true"] .eoq-trc-trc{background:#d8eee6;color:#084d3e}
+      .eoq-trc-badge{display:inline-block;margin-left:6px;font-size:11px;line-height:1.2;font-weight:600}
+      .eoq-trc-status{font-size:13px;font-weight:600}
+      .eoq-trc-status.current{color:#08634f}.eoq-trc-status.expanded{color:#875000}.eoq-trc-status.excluded{color:#5c6260}
+      .eoq-trc-note{margin:6px 0 0;font-size:12px;line-height:1.4;color:#344a40}
+      @media(max-width:760px){
+        .eoq-trc thead{display:none}.eoq-trc table,.eoq-trc tbody,.eoq-trc tr,.eoq-trc th,.eoq-trc td{display:block}
+        .eoq-trc caption{display:block;width:100%;box-sizing:border-box;padding:6px 10px}
+        .eoq-trc tr{border-bottom:2px solid #d9e3dc}.eoq-trc tbody th{width:auto;background:#edf3ed}
+        .eoq-trc td{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;text-align:right}
+        .eoq-trc td:before{content:attr(data-label);font-weight:500;text-align:left}
+        .eoq-trc-badge{width:100%}
+      }
+    </style><section class="eoq-trc" aria-label="Comparación de costos EOQ">
+      <table><caption>Costos EOQ · ''' + escape(scenario) + ' · ' + number(rows[0]['demand'], 0) + ''' u/año</caption>
+        <thead><tr><th scope="col">Alternativa</th><th scope="col">Ordenar · COP/año</th>
+          <th scope="col">Almacenar · COP/año</th><th scope="col">TRC · COP/año</th><th scope="col">Factibilidad</th></tr></thead>
+        <tbody>''' + ''.join(body) + '''</tbody></table>
+      <p class="eoq-trc-note"><b>TRC = ordenar + almacenar.</b> Ordenar incluye fletes y transportes por pedido, una sola vez.
+        El TRC excluye adquisición, capacidad y molde; su mínimo matemático no determina la mejor opción integral.<br>'''
+      + escape(criterion) + '</p></section>')
+
+
 def recommendations(rows):
     current = sorted((r for r in rows if r['feasible'] and r['current_feasible']), key=lambda r:r['total'])
     expanded = sorted((r for r in rows if r['feasible']), key=lambda r:r['total'])
@@ -234,7 +305,127 @@ def comparison_chart(results, saving=False, exposure=False, alternative="Compara
 
 
 COMPONENTS = {'acquisition':'Adquisición', 'ordering':'Pedidos sin flete', 'freight':'Transporte', 'holding':'Mantenimiento', 'capacity':'Capacidad', 'mold':'Molde a cargo'}
-SIMULATOR_VERSION = '2026-10-11.3'
+SIMULATOR_VERSION = '2026-10-11.5'
+
+MANAGEMENT_COMPONENTS = {'Costo integral': 'total', 'Ordenar': 'ordering',
+                         'Almacenar': 'holding', 'TRC': 'trc',
+                         'Adquisición': 'acquisition', 'Capacidad': 'capacity',
+                         'Molde': 'mold'}
+
+
+def management_controls():
+    from management import QUESTION_LABELS
+    columns = st.columns([1, 1])
+    question = columns[0].selectbox('Pregunta de gerencia', QUESTION_LABELS,
+                                   key='sim_management_question')
+    component = columns[1].selectbox('Costo a comparar', list(MANAGEMENT_COMPONENTS),
+                                    key='sim_management_component')
+    return question, component
+
+
+def render_management(exposure=False):
+    """Sensibilidades académicas aisladas de las cuatro demandas editables."""
+    from management import management_analysis, management_conclusion
+    with st.container(key='sim_management_panel'):
+        question, component_label = management_controls()
+        analysis = management_analysis(question)
+        parameter = analysis['parameter']
+        if parameter is None:
+            change = 'Parámetros originales'
+        else:
+            unit = ' %' if parameter == 'p' else ' COP/unidad' if parameter == 'vl' else ' COP/pedido'
+            change = (analysis['label'] + ': ' + number(analysis['before_parameter'], 0)
+                      + ' → ' + number(analysis['after_parameter'], 0) + unit)
+        st.caption(question + ' · G1 original · ' + number(analysis['base']['D'], 0)
+                   + ' u/año · Anual equivalente · ' + change)
+        costs = relevant_costs(analysis['after'])
+        winners = {row['id'] for row in analysis['after_winners']}
+        body, comparison_body = [], []
+        for item, row, comparison in zip(costs, analysis['after'], analysis['comparison']):
+            cells = []
+            for field, label in [('ordering', 'Ordenar'), ('holding', 'Almacenar'),
+                                 ('trc', 'TRC'), ('total', 'Integral')]:
+                amount = comparison['after'][field]
+                badge = '<small>Menor TRC</small>' if field == 'trc' and item['minimum'] else ''
+                if field == 'total' and row['id'] in winners:
+                    badge = '<small>Preferida factible</small>'
+                cells.append(f'<td data-field="{field}" data-label="{label} · COP/año" '
+                             f'data-value="{amount}" data-before="{comparison["before"][field]}">'
+                             + '$ ' + number(amount, 0) + badge + '</td>')
+            state = 'current' if row['current_feasible'] and row['feasible'] else 'expanded' if row['feasible'] else 'excluded'
+            body.append(f'<tr data-alternative="{row["id"]}" data-eoq="{row["eoq"]}" data-q="{row["Q"]}">'
+                        f'<th scope="row" style="border-left:4px solid {COLORS[row["id"]]}">{escape(row["name"])}</th>'
+                        + ''.join(cells)
+                        + f'<td data-label="Factibilidad" class="eoq-management-status {state}">'
+                        + escape(feasibility(row)) + f'<small>{row["positions"]} posiciones</small></td></tr>')
+            component = MANAGEMENT_COMPONENTS[component_label]
+            delta, percent = comparison['delta'][component], comparison['percent'][component]
+            values = [('before', 'Antes', comparison['before'][component]),
+                      ('after', 'Después', comparison['after'][component]),
+                      ('delta', 'Diferencia', delta), ('percent', 'Variación', percent)]
+            comparison_cells = []
+            for field, label, value in values:
+                displayed = ('—' if value is None else number(value) + ' %') if field == 'percent' else '$ ' + number(value, 0)
+                comparison_cells.append(f'<td data-field="{field}" data-label="{label}" data-value="{value if value is not None else ""}">' + displayed + '</td>')
+            comparison_body.append(f'<tr data-alternative="{row["id"]}"><th scope="row" '
+                                   f'style="border-left:4px solid {COLORS[row["id"]]}">{escape(row["name"])}</th>'
+                                   + ''.join(comparison_cells) + '</tr>')
+        table_html = '''<style>
+          .eoq-management,.eoq-management-comparison{font-size:13px;line-height:1.25;color:#18332f}
+          .eoq-management table,.eoq-management-comparison table{width:100%;border-collapse:collapse;background:white;border:1px solid #d9e3dc}
+          .eoq-management caption,.eoq-management-comparison caption{text-align:left;font-size:15px;font-weight:650;padding-bottom:3px;color:#18332f}
+          .eoq-management th,.eoq-management td,.eoq-management-comparison th,.eoq-management-comparison td{padding:3px 8px;border-bottom:1px solid #e3e9e4}
+          .eoq-management thead,.eoq-management-comparison thead{background:#edf3ed;font-size:12px}
+          .eoq-management th,.eoq-management-comparison th{text-align:left}
+          .eoq-management td,.eoq-management-comparison td{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+          .eoq-management small{display:block;font-size:10px;line-height:1.2;font-weight:600}
+          .eoq-management td[data-field="trc"]:has(small),.eoq-management td[data-field="total"]:has(small){background:#d8eee6;color:#084d3e;font-weight:650}
+          .eoq-management .eoq-management-status{text-align:left;white-space:normal;font-size:12px;font-weight:600}
+          .eoq-management-status.current{color:#08634f}.eoq-management-status.expanded{color:#875000}.eoq-management-status.excluded{color:#5c6260}
+          .eoq-management-note{font-size:11px;line-height:1.35;margin:4px 0;color:#344a40}
+          .eoq-management-conclusion{color:#18332f;background:#edf3ed;border-left:4px solid #087d68;font-size:13px;line-height:1.4;padding:7px 10px;margin:0}
+          @media(max-width:760px){
+            .eoq-management thead,.eoq-management-comparison thead{display:none}
+            .eoq-management table,.eoq-management tbody,.eoq-management tr,.eoq-management th,.eoq-management td,
+            .eoq-management-comparison table,.eoq-management-comparison tbody,.eoq-management-comparison tr,.eoq-management-comparison th,.eoq-management-comparison td{display:block}
+            .eoq-management caption,.eoq-management-comparison caption{display:block;width:100%;box-sizing:border-box;padding:6px 8px}
+            .eoq-management tbody th,.eoq-management-comparison tbody th{background:#edf3ed}
+            .eoq-management tr,.eoq-management-comparison tr{border-bottom:2px solid #d9e3dc}
+            .eoq-management td,.eoq-management-comparison td{display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;white-space:normal}
+            .eoq-management td:before,.eoq-management-comparison td:before{content:attr(data-label);text-align:left;font-weight:500}
+            .eoq-management small{width:100%;text-align:right}
+          }
+        </style><section class="eoq-management" aria-label="Costos de preguntas de gerencia">
+          <table class="eoq-management-costs"><caption>Costos anuales · ''' + escape(question) + ''' · COP/año</caption>
+            <thead><tr><th>Alternativa</th><th>Ordenar</th><th>Almacenar</th><th>TRC</th><th>Costo integral</th><th>Factibilidad</th></tr></thead>
+            <tbody>''' + ''.join(body) + '''</tbody></table>
+          <p class="eoq-management-note"><b>TRC = ordenar + almacenar.</b> Ordenar incluye fletes una sola vez.
+          Integral = adquisición + TRC + capacidad + molde; incluye la ampliación completa cuando se necesita.</p>
+        </section>'''
+        comparison_html = ('<section class="eoq-management-comparison" aria-label="Antes y después">'
+                '<table><caption>Antes G1 vs. Después · ' + escape(component_label) + ' · COP/año</caption>'
+                '<thead><tr><th>Alternativa</th><th>Antes · G1</th><th>Después</th><th>Diferencia</th><th>Variación</th></tr></thead>'
+                '<tbody>' + ''.join(comparison_body) + '</tbody></table>'
+                '<p class="eoq-management-note">Diferencia = después − antes; porcentaje respecto a G1. — indica costo base cero.</p></section>')
+        st.html(table_html.split('</style>', 1)[0] + '</style>')
+        def draw_question_inventory():
+            st.plotly_chart(inventory_chart(analysis['after'], analysis['parameters'], False,
+                                            height=220 if exposure else 270),
+                            key='sim_management_inventory', width='stretch',
+                            config={'displaylogo': False,
+                                    'toImageButtonOptions': {'filename': 'gerencia_eoq'}})
+        if exposure:
+            inventory, comparison_view = st.columns(2, gap='medium')
+            with inventory:
+                draw_question_inventory()
+            with comparison_view:
+                st.html(comparison_html)
+            st.html(table_html)
+        else:
+            draw_question_inventory()
+            st.html(table_html)
+            st.html(comparison_html)
+        st.html('<p class="eoq-management-conclusion">' + escape(management_conclusion(analysis)) + '</p>')
 
 
 def demonstration():
@@ -248,10 +439,10 @@ def inventory_chart(rows, p, partial, height=270):
     chart = go.Figure()
     for row in rows:
         x,y = sawtooth(row,partial)
-        chart.add_trace(go.Scatter(x=x,y=y,mode='lines',name=row['name']+' · '+feasibility(row),line=dict(color=COLORS[row['id']],width=3),hovertemplate='%{x:.3f} meses · %{y:,.2f} unidades<extra>%{fullData.name}</extra>'))
+        chart.add_trace(go.Scatter(x=x,y=y,mode='lines',name=row['name'],meta=feasibility(row),line=dict(color=COLORS[row['id']],width=3),hovertemplate='%{x:.3f} meses · %{y:,.2f} unidades<br>%{meta}<extra>%{fullData.name}</extra>'))
     chart.add_hline(y=p['positions']*p['units'],line_dash='dot',annotation_text='Capacidad actual')
     chart.add_hline(y=max(p['positions']+p['rentPositions'],p['positions']+p['expandPositions'])*p['units'],line_dash='dash',annotation_text='Capacidad máxima')
-    chart.update_layout(title='Inventario durante 12 meses',xaxis=dict(title='Meses',range=[0,12]),yaxis_title='Unidades',height=height,font=dict(size=14),uirevision='inventory',legend=dict(orientation='h',font=dict(size=12)),margin=dict(l=40,r=20,t=45,b=40))
+    chart.update_layout(title='Inventario durante 12 meses',xaxis=dict(title='Meses',range=[0,12]),yaxis_title='Unidades',height=height,font=dict(size=14),uirevision='inventory',legend=dict(orientation='h',font=dict(size=12),yref='container',y=0,yanchor='bottom'),margin=dict(l=40,r=20,t=45,b=85))
     return chart
 
 
@@ -271,13 +462,17 @@ def render_simulator():
         reset()
         demonstration()
         st.session_state.setdefault('sim_scenario','Base G1')
-    header=st.columns([1,3])
+    header=st.columns([1,1,2])
     exposure = header[0].toggle('Modo exposición',key='sim_exposure')
     if exposure:
         with header[1]:
             controls=st.popover('Editar parámetros')
         main=st.container(key='sim_executive')
-        st.html('<style>.st-key-sim_executive [data-testid="stMetricValue"]{font-size:1.35rem}</style>')
+        st.html('''<style>
+          .st-key-sim_executive [data-testid="stMetricValue"]{font-size:1.35rem}
+          .st-key-sim_executive,.st-key-sim_executive [data-testid="stVerticalBlock"]{gap:6px}
+          .st-key-sim_executive [role="tabpanel"]{padding-top:8px}
+        </style>''')
     else:
         st.subheader('Simulador de escenarios EOQ')
         controls,main=st.columns([1,3],gap='large')
@@ -289,9 +484,28 @@ def render_simulator():
         st.caption('Reposición instantánea; contenedores completos. Sin cambios al modelo financiero original.')
         st.button('Comparar escenarios',on_click=lambda:st.session_state.update(sim_selector='Comparar todas las alternativas'))
     with main:
-        top=st.columns(2)
-        selected=top[0].selectbox('Alternativa',['Comparar todas las alternativas',*NAMES.values()],key='sim_selector')
-        scenario=top[1].selectbox('Escenario de inventario',SCENARIOS,key='sim_scenario')
+        management_active = exposure and st.session_state.get('sim_exec_tab') == 'Preguntas de gerencia'
+        if management_active:
+            with header[2]:
+                selectors = st.popover('Demandas del simulador', help='Las cuatro demandas se conservan aparte. Las preguntas académicas siempre parten de G1 original.')
+        else:
+            selectors = st.container()
+        with selectors:
+            top=st.columns(2)
+            selected=top[0].selectbox('Alternativa',['Comparar todas las alternativas',*NAMES.values()],key='sim_selector')
+            scenario=top[1].selectbox('Escenario de inventario',SCENARIOS,key='sim_scenario')
+        if exposure:
+            tabs=st.tabs(['Inventario','Costos','Ahorro comparativo','Preguntas de gerencia'],key='sim_exec_tab',on_change='rerun')
+            if tabs[3].open:
+                with tabs[3]:
+                    render_management(exposure=True)
+                st.caption('Simulador · '+SIMULATOR_VERSION+' · '+st.session_state['sim_management_question']+' · G1 original · Anual equivalente')
+                return
+            # Mantener los widgets aun al navegar: Streamlit conserva la pregunta
+            # y el componente seleccionado, sin alterar las demandas del simulador.
+            with header[2]:
+                with st.popover('Seleccionar pregunta de gerencia'):
+                    management_controls()
         try:
             results={name:evaluate(p,st.session_state['sim_d'+str(i)],basis.startswith('Año observado'),partial) for i,name in enumerate(SCENARIOS)}
         except ValueError as error:
@@ -319,8 +533,13 @@ def render_simulator():
             columns=st.columns(4)
             for col,label,value in zip(columns,['Demanda · u/año','Lote · unidades','Pedidos emitidos / D÷Q','Inventario promedio'],[number(reference['demand'],0),number(reference['Q']),str(reference['count'])+' / '+number(reference['theoretical'],3),number(reference['average'])]):
                 col.metric(label,value,help=reference['name'])
-            st.plotly_chart(inventory_chart(visible,p,partial),key='sim_inventory',width='stretch',config={'displaylogo':False,'toImageButtonOptions':{'filename':'inventario_eoq'}})
-            st.info(' · '.join(r['name']+': '+feasibility(r)+f" ({r['positions']} posiciones)" for r in visible)+'. Reposición instantánea; el último ciclo puede ser incompleto, sin emitir otro pedido al mes 12.')
+            st.plotly_chart(inventory_chart(visible,p,partial,height=230 if exposure else 270),key='sim_inventory',width='stretch',config={'displaylogo':False,'toImageButtonOptions':{'filename':'inventario_eoq'}})
+            render_relevant_costs(rows,scenario,basis.startswith('Año observado'))
+            inventory_note = 'Reposición instantánea; el último ciclo puede ser incompleto, sin emitir otro pedido al mes 12.'
+            if exposure:
+                st.caption(inventory_note)
+            else:
+                st.info(' · '.join(r['name']+': '+feasibility(r)+f" ({r['positions']} posiciones)" for r in visible)+'. '+inventory_note)
 
         def draw_costs():
             economic_metrics()
@@ -343,7 +562,6 @@ def render_simulator():
             st.caption('Puntos: ahorro potencial sujeto a ampliar capacidad. Rayas: ahorro no realizable por inviabilidad. Positivo = ahorro; negativo = sobrecosto. '+('La referencia local también es inviable.' if not local['feasible'] else ''))
 
         if exposure:
-            tabs=st.tabs(['Inventario','Costos','Ahorro comparativo'],key='sim_exec_tab',on_change='rerun')
             for tab,draw in zip(tabs,[draw_inventory,draw_costs,draw_savings]):
                 if tab.open:
                     with tab: draw()
@@ -352,13 +570,14 @@ def render_simulator():
             draw_inventory()
             draw_costs()
             draw_savings()
+            with st.expander('Preguntas de gerencia'):
+                render_management()
             table=[]
             for name,items in results.items():
                 now,expanded,_=recommendations(items)
                 for r in items:
                     absolute,percentage=savings(r,items[2])
                     table.append({'Escenario':name,'Alternativa':r['name'],'Mejor con capacidad actual':'Sí' if now and r in now and abs(r['total']-now[0]['total'])<.01 else '', 'Recomendación':'Mejor considerando ampliación' if expanded and r in expanded and abs(r['total']-expanded[0]['total'])<.01 else '', 'Demanda · u/año':r['demand'],'EOQ · u':r['eoq'],'Lote · u':r['Q'],'Pedidos emitidos':r['count'],'Frecuencia D/Q':r['theoretical'],'Periodo · días':r['cycle'],'Inventario promedio · u':r['average'],'Promedio observado · u':r['actual_average'],'Último pedido · u':r['final_lot'],'Inventario final · u':r['closing'],'Adquisición · COP':r['acquisition'],'Ordenar sin flete · COP':r['ordering'],'Flete · COP':r['freight'],'Mantenimiento · COP':r['holding'],'Capacidad · COP':r['capacity'],'Molde a cargo · COP':r['mold'],'Total anual · COP':r['total'],'Posiciones requeridas':r['positions'],'Bodega':r['chosen'],'Factibilidad':feasibility(r),'Ahorro vs. local · COP':absolute,'Ahorro vs. local · %':percentage})
-            import pandas as pd
             with st.expander('Tabla de los cuatro escenarios'):
                 frame=pd.DataFrame(table)
                 formats={c:money if 'COP' in c else number for c in frame if pd.api.types.is_numeric_dtype(frame[c])}
